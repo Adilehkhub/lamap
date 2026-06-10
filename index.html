@@ -56,7 +56,18 @@
       font-size: 13px;
       font-weight: 600;
       flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
     }
+    #save-indicator {
+      font-size: 10px;
+      font-weight: 500;
+      opacity: 0;
+      transition: opacity 0.3s;
+      color: #7ecb8f;
+    }
+    #save-indicator.show { opacity: 1; }
 
     #location-list { overflow-y: auto; flex: 1; }
 
@@ -197,7 +208,10 @@
   </div>
 
   <div id="sidebar">
-    <div id="sidebar-header">Locations — add a # to label</div>
+    <div id="sidebar-header">
+      <span>Locations — add a # to label</span>
+      <span id="save-indicator">✓ Saved</span>
+    </div>
     <div id="location-list"></div>
 
     <div id="add-form">
@@ -228,21 +242,57 @@
     { name: "LA Music Center",      lat: 34.05580, lng: -118.24970 },
   ];
 
-  // Restore saved state from localStorage
-  const saved       = JSON.parse(localStorage.getItem("la-map-state") || "{}");
-  const numbers     = saved.numbers  || {};                        // { index: "3" }
-  const extraLocs   = saved.extras   || [];                        // [{name,lat,lng}]
-  const LOCATIONS   = BASE_LOCATIONS.concat(extraLocs);
+  const STORAGE_KEY = "la-map-state";
 
-  const markers = {};
-  let   map     = null;
+  // ── Load saved state (localStorage first, URL hash as fallback) ──
+  function loadState() {
+    // Try localStorage
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch(e) {}
+    // Try URL hash fallback
+    try {
+      const hash = window.location.hash.slice(1);
+      if (hash) return JSON.parse(decodeURIComponent(hash));
+    } catch(e) {}
+    return {};
+  }
+
+  const saved     = loadState();
+  const numbers   = saved.numbers || {};
+  const extraLocs = saved.extras  || [];
+  const LOCATIONS = BASE_LOCATIONS.concat(extraLocs);
+
+  const markers  = {};
+  let   map      = null;
   let   geocoder = null;
 
+  let saveTimer = null;
   function persist() {
-    localStorage.setItem("la-map-state", JSON.stringify({
+    const state = {
       numbers,
       extras: LOCATIONS.slice(BASE_LOCATIONS.length),
-    }));
+    };
+    const json = JSON.stringify(state);
+
+    // Save to localStorage with explicit error surfacing
+    try {
+      localStorage.setItem(STORAGE_KEY, json);
+    } catch(e) {
+      console.warn("localStorage unavailable, using URL hash only:", e);
+    }
+
+    // Also encode in URL hash so it survives origin changes (file:// ↔ localhost)
+    try {
+      history.replaceState(null, "", "#" + encodeURIComponent(json));
+    } catch(e) {}
+
+    // Flash "✓ Saved" indicator
+    clearTimeout(saveTimer);
+    const indicator = document.getElementById("save-indicator");
+    indicator.classList.add("show");
+    saveTimer = setTimeout(() => indicator.classList.remove("show"), 1500);
   }
 
   // ── SVG icon ──
