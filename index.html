@@ -125,12 +125,9 @@
     #add-form input:focus { outline: none; border-color: #4a90e2; }
     #add-form input::placeholder { color: #bbb; }
 
-    #add-form .row2 {
-      display: flex;
-      gap: 6px;
-    }
+    #add-form .row2 { display: flex; gap: 6px; }
     #add-form .row2 input { margin-bottom: 0; }
-    #add-form .row2 #new-num { width: 56px; flex-shrink: 0; text-align: center; }
+    #add-form .row2 #new-num  { width: 56px; flex-shrink: 0; text-align: center; }
     #add-form .row2 #new-name { flex: 1; }
 
     #add-btn {
@@ -203,19 +200,15 @@
     <div id="sidebar-header">Locations — add a # to label</div>
     <div id="location-list"></div>
 
-    <!-- Add new location form -->
     <div id="add-form">
       <div class="form-title">+ Add a location</div>
-
       <div class="row2">
-        <input id="new-num"  type="text" placeholder="#"    maxlength="6" />
+        <input id="new-num"  type="text" placeholder="#" maxlength="6" />
         <input id="new-name" type="text" placeholder="Name (e.g. Grand Central Market)" />
       </div>
-
       <input id="new-addr" type="text"
              placeholder="Address (e.g. 317 S Broadway, Los Angeles)"
              style="margin-top:6px" />
-
       <button id="add-btn" onclick="addLocation()">Add to Map</button>
       <div id="add-status"></div>
     </div>
@@ -223,7 +216,7 @@
 </div>
 
 <script>
-  const LOCATIONS = [
+  const BASE_LOCATIONS = [
     { name: "Aquarela",             lat: 34.05140, lng: -118.25590 },
     { name: "Bradbury Building",    lat: 34.05050, lng: -118.24870 },
     { name: "Proper",               lat: 34.04360, lng: -118.25790 },
@@ -235,12 +228,24 @@
     { name: "LA Music Center",      lat: 34.05580, lng: -118.24970 },
   ];
 
-  const numbers = {};
+  // Restore saved state from localStorage
+  const saved       = JSON.parse(localStorage.getItem("la-map-state") || "{}");
+  const numbers     = saved.numbers  || {};                        // { index: "3" }
+  const extraLocs   = saved.extras   || [];                        // [{name,lat,lng}]
+  const LOCATIONS   = BASE_LOCATIONS.concat(extraLocs);
+
   const markers = {};
   let   map     = null;
   let   geocoder = null;
 
-  // ── SVG icon: bubble + stem + dot ──
+  function persist() {
+    localStorage.setItem("la-map-state", JSON.stringify({
+      numbers,
+      extras: LOCATIONS.slice(BASE_LOCATIONS.length),
+    }));
+  }
+
+  // ── SVG icon ──
   function makeIcon(name, num) {
     const label  = (num ? num + "  " : "") + name;
     const charW  = 7.2, padX = 14;
@@ -263,13 +268,13 @@
     };
   }
 
-  // ── Append one row to the sidebar list ──
+  // ── Sidebar row ──
   function appendRow(i) {
     const loc  = LOCATIONS[i];
     const list = document.getElementById("location-list");
 
     const row = document.createElement("div");
-    row.className = "loc-row";
+    row.className   = "loc-row";
     row.dataset.index = i;
 
     const numInput = document.createElement("input");
@@ -281,6 +286,7 @@
     numInput.addEventListener("input", () => {
       numbers[i] = numInput.value.trim();
       if (markers[i]) markers[i].setIcon(makeIcon(loc.name, numbers[i]));
+      persist();
     });
     numInput.addEventListener("click", e => e.stopPropagation());
 
@@ -312,14 +318,12 @@
     map.setZoom(17);
   }
 
-  // ── Add location via geocoding ──
+  // ── Add location ──
   function addLocation() {
     const name = document.getElementById("new-name").value.trim();
     const addr = document.getElementById("new-addr").value.trim();
     const num  = document.getElementById("new-num").value.trim();
-
-    const status = document.getElementById("add-status");
-    const btn    = document.getElementById("add-btn");
+    const btn  = document.getElementById("add-btn");
 
     if (!name) { setStatus("err", "Please enter a location name."); return; }
     if (!addr) { setStatus("err", "Please enter an address to search."); return; }
@@ -340,6 +344,7 @@
 
       LOCATIONS.push({ name, lat: pos.lat(), lng: pos.lng() });
       numbers[i] = num;
+      persist();
 
       const marker = new google.maps.Marker({
         position:  pos,
@@ -354,7 +359,6 @@
 
       appendRow(i);
 
-      // Clear form
       document.getElementById("new-name").value = "";
       document.getElementById("new-addr").value = "";
       document.getElementById("new-num").value  = "";
@@ -362,7 +366,6 @@
       setStatus("ok", `"${name}" added!`);
       setTimeout(() => setStatus("", ""), 3000);
 
-      // Fly to new pin
       map.panTo(pos);
       map.setZoom(16);
     });
@@ -374,12 +377,11 @@
     el.textContent = msg;
   }
 
-  // Allow Enter key in address field to trigger add
   document.getElementById("new-addr").addEventListener("keydown", e => {
     if (e.key === "Enter") addLocation();
   });
 
-  // ── Map init callback ──
+  // ── Map init ──
   window.initMap = function() {
     map      = new google.maps.Map(document.getElementById("map"), {
       center:            { lat: 34.0480, lng: -118.2500 },
@@ -407,15 +409,13 @@
   };
 
   window.gm_authFailure = function() {
-    const err = document.getElementById("splash-err");
-    err.textContent = "API key error. Make sure the Maps JavaScript API is enabled in Google Cloud Console.";
-    err.style.display = "block";
+    document.getElementById("splash-err").textContent = "API key error. Make sure the Maps JavaScript API is enabled in Google Cloud Console.";
+    document.getElementById("splash-err").style.display = "block";
     document.getElementById("splash").querySelector("h2").textContent = "Map Error";
     document.getElementById("splash").querySelector("p").textContent  = "";
     document.getElementById("splash").style.display = "flex";
   };
 
-  // ── Auto-load ──
   (function() {
     const API_KEY = "AIzaSyBDQzSNdjX8ioOYFCa_jMAcA2ofnKmgdzA";
     const script   = document.createElement("script");
@@ -426,7 +426,7 @@
       document.getElementById("splash-err").textContent = "Failed to load Google Maps. Check your network connection.";
       document.getElementById("splash-err").style.display = "block";
       document.getElementById("splash").querySelector("h2").textContent = "Map Error";
-      document.getElementById("splash").style.display    = "flex";
+      document.getElementById("splash").style.display = "flex";
     };
     document.head.appendChild(script);
   })();
